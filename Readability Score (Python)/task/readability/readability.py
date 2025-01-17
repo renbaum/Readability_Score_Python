@@ -1,6 +1,7 @@
 # Write your code here
 # put your python code here
 # from nltk import TreebankWordTokenizer as TWT
+import re
 import string
 import sys
 from math import ceil
@@ -24,10 +25,17 @@ readability = {1: ["5-6", "Kindergarten"],
              13: ["17-18", "Twelfth Grade"],
              14: ["18-22", "College student"]}
 
+
 class TextAnalyzer:
-    def __init__(self, text):
+    def __init__(self, text, longmanfile):
         self.text = text
         self.sentences = sent_tokenize(text)
+        self.longman = self.get_longmanfile(longmanfile)
+
+    def get_longmanfile(self, longmanfile):
+        with open(longmanfile, "r") as file:
+            longman = file.read()
+        return longman.split("\n")
 
     def count_words(self):
         return self.count_words_in_text(self.text)
@@ -67,34 +75,94 @@ class TextAnalyzer:
     def is_it_easy(self):
         return self.average_words() <= 10
 
+    def count_syllables_in_word(self, word):
+        syllables = 0
+        l = re.findall(r"[AEIOUYaeiouy]+", word)
+        for i in l:
+            if len(i) <=2: syllables += 1
+            elif len(i) == 3: syllables += 2
+
+        if re.search(r"[AEIOUYaeiouy]$", word): syllables -= 1
+        if syllables == 0: syllables = 1
+
+        return syllables
+
+    def count_syllables(self):
+        list = self.get_filtered_word_list(self.text)
+        syllables = 0
+        for word in list:
+            syllables += self.count_syllables_in_word(word)
+
+        return syllables
+
+    def extract_age(self, text):
+        l = re.findall(r"\d{1,2}", text)
+        for i in l:
+            yield int(i)
+
+    def get_average_age(self, list_age):
+        count = 0
+        total_age = 0
+        for i in list_age:
+            for age in self.extract_age(i):
+                total_age += age
+                count += 1
+
+        return total_age / count
+
+    def get_dificult_words(self):
+        list = self.get_filtered_word_list(self.text)
+        dificult_words = [diffword for diffword in list if diffword not in self.longman]
+        return len(dificult_words)
+
+
     def calculate_score(self):
         word_count = self.count_words()
         sentence_count = self.count_sentences()
         characters = self.count_characters()
+        dificult_words = self.get_dificult_words()
+        syllables = self.count_syllables()
 
         score = 4.71 * characters / word_count + 0.5 * word_count / sentence_count - 21.43
         score = ceil(score)
+        fk = 0.39 * word_count / sentence_count + 11.8 * syllables / word_count - 15.59
+        fk = ceil(fk)
+        dale = 0.1579 * (dificult_words / word_count) * 100 + 0.0496 * (word_count / sentence_count)
+        if (dificult_words / word_count) * 100 >= 5: dale += 3.6365
+        dale = ceil(dale)
+
+        age_score = readability[score][0]
+        age_fk = readability[fk][0]
+        age_dale = readability[dale][0]
+
         print(f"Characters: {characters}")
         print(f"Sentences: {sentence_count}")
         print(f"Words: {word_count}")
-        print(f"Automated Readability Index: {score} (this text should be understood by {readability[score][0]} year olds).")
+        print(f"Difficult words: {dificult_words}")
+        print(f"Syllables: {syllables}")
+        print()
+        print(f"Automated Readability Index: {score} (about {age_score} year olds).")
+        print(f"Flesch-Kincaid Readability Test: {fk} (about {age_fk} year olds).")
+        print(f"Dale-Chall Readability Index: {dale}. The text can be understood by {age_dale} year olds.")
+        print(f"This text should be understood in average by {self.get_average_age([age_score, age_fk, age_dale]):.1f} year olds.")
 
-
-        return self.average_words()
 
 
 if __name__ == "__main__":
     text = ""
 
-    if len(sys.argv) == 2:
+
+    if len(sys.argv) == 3:
         filename = sys.argv[1]
+        longmanfile = sys.argv[2]
         with open(filename, "r") as file:
             text = file.read()
             print(f"Text: {text}")
     else:
         text = input()
+        longmanfile = "word.txt"
 
     result = "HARD"
-    analyzer = TextAnalyzer(text)
+    analyzer = TextAnalyzer(text, longmanfile)
     analyzer.calculate_score()
 
